@@ -1,0 +1,20 @@
+{
+  "name": "aws",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "serverless-bundle test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "serverless-bundle": "^6.0.0"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1307.0",
+    "http-errors": "^2.0.0",
+    "uuid": "^9.0.0"
+  }
+}

@@ -1,0 +1,219 @@
+org: lonedev
+app: languvi-admin
+service: languvi-admin
+frameworkVersion: '3'
+
+plugins:
+  - serverless-bundle
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  memorySize: 256
+  stage: ${opt:stage, 'dev'}
+  region: us-east-1
+  environment:
+    LANGUAGE_PAIR_TABLE: ${self:service}-languagePairTable-${sls:stage}
+    TOPIC_PRICING_TABLE: ${self:service}-topicPricingTable-${sls:stage}
+    SERVICE_TABLE: ${self:service}-servicesTable-${sls:stage}
+    ORDERS_TABLE: ${self:service}-ordersTable-${sls:stage}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - 'dynamodb:Query*'
+            - 'dynamodb:PutItem'
+            - 'dynamodb:Scan*'
+            - 'dynamodb:GetItem*'
+            - 'dynamodb:UpdateItem'
+            - 'dynamodb:DeleteItem'
+          Resource:
+            - ${self:custom.topicPricingTableArn}
+            - ${self:custom.servicesTableArn}
+            - ${self:custom.languagePairTableArn}
+            - ${self:custom.ordersTableArn}
+
+# all tables admin has access to
+resources:
+  Resources: 
+    LanguagePairTable: 
+      Type: AWS::DynamoDB::Table
+      Properties: 
+        TableName: ${self:service}-languagePairTable-${sls:stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions: 
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+
+    WordPricingTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-topicPricingTable-${sls:stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH 
+            
+    ServicesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-servicesTable-${sls:stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH 
+    
+    # this table should generate all filters for the client side
+    OrdersTable:
+      Type: AWS::DynamoDB::Table
+      Properties: 
+        TableName: ${self:service}-ordersTable-${sls:stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: paid
+            AttributeType: N
+          - AttributeName: translator
+            AttributeType: S
+          - AttributeName: proofreader
+            AttributeType: S
+          - AttributeName: due_date
+            AttributeType: S
+          - AttributeName: standing
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+          - AttributeName: paid
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: orderQuery
+            KeySchema:
+              - AttributeName: paid
+                KeyType: HASH
+              - AttributeName: translator
+                KeyType: RANGE
+            Projection: 
+              ProjectionType: ALL
+
+          - IndexName: proofreadingQuery
+            KeySchema:
+              - AttributeName: paid
+                KeyType: HASH
+              - AttributeName: proofreader
+                KeyType: RANGE
+            Projection: 
+              ProjectionType: ALL
+
+          - IndexName: statusAndDue
+            KeySchema:
+              - AttributeName: standing
+                KeyType: HASH
+              - AttributeName: due_date
+                KeyType: RANGE
+            Projection: 
+              ProjectionType: ALL
+          
+
+functions:
+  createpair:
+    handler: src/language_pricing.create_pair
+    events:
+      - httpApi:
+          path: /createpair
+          method: POST
+
+  getpairs:
+    handler: src/language_pricing.get_pairs
+    events:
+      - httpApi:
+          path: /pairs
+          method: GET
+
+  editpair:
+    handler: src/language_pricing.edit_pair
+    events:
+      - httpApi:
+          path: /editpair/{id}
+          method: PATCH
+  
+  deletepair:
+    handler: src/language_pricing.delete_pair
+    events:
+      - httpApi:
+          path: /deletepair/{id}
+          method: DELETE
+
+  createtopic:
+    handler: src/topic_pricing.create_topic
+    events:
+      - httpApi:
+          path: /createtopic
+          method: POST
+
+  gettopics:
+    handler: src/topic_pricing.get_topics
+    events:
+      - httpApi:
+          path: /topics
+          method: GET
+
+  edittopic:
+    handler: src/topic_pricing.edit_topic
+    events:
+      - httpApi:
+          path: /edittopic/{id}
+          method: PATCH
+  
+  deletetopic:
+    handler: src/topic_pricing.delete_topic
+    events:
+      - httpApi:
+          path: /deletetopic/{id}
+          method: DELETE
+
+  putservices:
+    handler: src/package_service.put_service
+    events:
+      - httpApi:
+          path: /services
+          method: PUT
+
+  getservices:
+    handler: src/package_service.get_service
+    events:
+      - httpApi:
+          path: /services
+          method: GET
+
+  getorders:
+    handler: src/order.get_orders
+    events:
+      - httpApi:
+          path: /orders
+          method: GET
+
+  createorder:
+    handler: src/order.create_order
+    events:
+      - httpApi:
+          path: /orders
+          method: POST         
+custom:
+  languagePairTableArn: !GetAtt LanguagePairTable.Arn
+  topicPricingTableArn: !GetAtt WordPricingTable.Arn
+  ordersTableArn: !GetAtt OrdersTable.Arn
+  servicesTableArn: !GetAtt ServicesTable.Arn
+  bundle:
+    linting: false
