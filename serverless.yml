@@ -17,6 +17,8 @@ provider:
     TOPIC_PRICING_TABLE: ${self:service}-topicPricingTable-${sls:stage}
     SERVICE_TABLE: ${self:service}-servicesTable-${sls:stage}
     ORDERS_TABLE: ${self:service}-ordersTable-${sls:stage}
+    TRANSLATORS_TABLE: ${self:custom.translatorTable.name}
+    CLIENTS_TABLE: ${self:custom.clientTable.name}
   iam:
     role:
       statements:
@@ -33,6 +35,8 @@ provider:
             - ${self:custom.servicesTableArn}
             - ${self:custom.languagePairTableArn}
             - ${self:custom.ordersTableArn}
+            - ${self:custom.translatorTable.arn}
+            - ${self:custom.clientTable.arn}
 
 # all tables admin has access to
 resources:
@@ -124,8 +128,15 @@ resources:
                 KeyType: RANGE
             Projection: 
               ProjectionType: ALL
-          
-
+  Outputs:
+    OrdersTableArn:
+      Value: ${self:custom.ordersTableArn}      
+      Export:
+        Name: OrdersTable-${self:provider.stage}-Arn
+    OrdersTableName:
+      Value: ${self:service}-ordersTable-${sls:stage}
+      Export:
+        Name: OrdersTable-${self:provider.stage}-Name
 functions:
   createpair:
     handler: src/language_pricing.create_pair
@@ -204,16 +215,30 @@ functions:
           path: /orders
           method: GET
 
-  createorder:
-    handler: src/order.create_order
+  approveTranslator:
+    handler: src/translatorActions/approveTranslator.handler  
     events:
       - httpApi:
-          path: /orders
-          method: POST         
+          path: /approve
+          method: POST
+  
+  approveTranslator:
+    handler: src/translatorActions/disapproveTranslator.handler  
+    events:
+      - httpApi:
+          path: /disapprove
+          method: POST  
+
 custom:
   languagePairTableArn: !GetAtt LanguagePairTable.Arn
   topicPricingTableArn: !GetAtt WordPricingTable.Arn
   ordersTableArn: !GetAtt OrdersTable.Arn
   servicesTableArn: !GetAtt ServicesTable.Arn
+  translatorTable:
+    name: !ImportValue ${self:service}-translatorsTable-${sls:stage}-Name
+    arn: !ImportValue ${self:service}-translatorsTable-${sls:stage}-Arn
+  clientTable:
+    name: !ImportValue ${self:service}-clientTable-${sls:stage}-Name
+    arn: !ImportValue ${self:service}-clientTable-${sls:stage}-Arn
   bundle:
     linting: false

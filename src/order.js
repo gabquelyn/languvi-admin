@@ -97,32 +97,3 @@ export async function get_orders(event, context) {
 
 
 
-export async function create_order(event, context){
-  const {translator, proofreader, paid, due_date, standing} = JSON.parse(event.body)
-  const param = {
-    id: uuid(),
-    translator,
-    proofreader,
-    paid,
-    standing,
-    createdAt : new Date().toISOString(),
-    due_date : due_date
-  }
-
-  try{
-    await dynamodb.put({
-      TableName: tableName,
-      Item: param
-    }).promise()
-  }catch(err){
-    console.error(err)
-  }
-
-  return{
-    statusCode: 201,
-    body: JSON.stringify({
-      message: "Placed order successfully",
-      output: param
-    })
-  }
-}
