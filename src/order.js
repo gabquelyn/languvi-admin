@@ -1,5 +1,4 @@
 import AWS from "aws-sdk";
-import { v4 as uuid } from "uuid";
 const tableName = process.env.ORDERS_TABLE;
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 AWS.config.update({ region: "us-east-1" });

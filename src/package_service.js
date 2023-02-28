@@ -39,7 +39,7 @@ export async function get_service(event, context){
     try{
         const result = await dynamodb.get({
             TableName: tableName,
-            id: "service"
+            Key: {id: "service"}
         }).promise()
         data = result.Item
     }catch(err){

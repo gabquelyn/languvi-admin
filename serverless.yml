@@ -16,9 +16,11 @@ provider:
     LANGUAGE_PAIR_TABLE: ${self:service}-languagePairTable-${sls:stage}
     TOPIC_PRICING_TABLE: ${self:service}-topicPricingTable-${sls:stage}
     SERVICE_TABLE: ${self:service}-servicesTable-${sls:stage}
-    ORDERS_TABLE: ${self:service}-ordersTable-${sls:stage}
+    ORDERS_TABLE: ${self:service}-orderTables-${sls:stage}
     TRANSLATORS_TABLE: ${self:custom.translatorTable.name}
     CLIENTS_TABLE: ${self:custom.clientTable.name}
+    ADMIN_POOL_ID: { Ref: AdminPool }
+    ADMIN_CLIENT_ID : { Ref: AdminClient}
   iam:
     role:
       statements:
@@ -30,6 +32,10 @@ provider:
             - 'dynamodb:GetItem*'
             - 'dynamodb:UpdateItem'
             - 'dynamodb:DeleteItem'
+            - cognito-idp:AdminInitiateAuth
+            - cognito-idp:AdminCreateUser
+            - cognito-idp:AdminSetUserPassword
+            - cognito-idp:AdminUpdateUserAttributes
           Resource:
             - ${self:custom.topicPricingTableArn}
             - ${self:custom.servicesTableArn}
@@ -37,10 +43,43 @@ provider:
             - ${self:custom.ordersTableArn}
             - ${self:custom.translatorTable.arn}
             - ${self:custom.clientTable.arn}
+            - ${self:custom.adminPoolArn}
+  httpApi:
+    authorizers:
+      adminAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        issuerUrl: ${self:custom.cognitoIssuerUrl.Value}
+        audience: 
+          - !Ref AdminClient
 
-# all tables admin has access to
 resources:
   Resources: 
+    AdminPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: languvi-admin-auth-pool
+        Schema:
+          - Name: email
+            Required: true
+            Mutable: true
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+        AutoVerifiedAttributes:
+          - email
+
+    AdminClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: languvi-admin-pool
+        GenerateSecret: false
+        UserPoolId: !Ref AdminPool
+        AccessTokenValidity: 5
+        IdTokenValidity: 5
+        ExplicitAuthFlows:
+          - 'ADMIN_NO_SRP_AUTH'
+
     LanguagePairTable: 
       Type: AWS::DynamoDB::Table
       Properties: 
@@ -49,9 +88,23 @@ resources:
         AttributeDefinitions: 
           - AttributeName: id
             AttributeType: S
+          - AttributeName: source
+            AttributeType: S
+          - AttributeName: target
+            AttributeType: S
         KeySchema:
           - AttributeName: id
             KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: sourceAndTarget
+            KeySchema:
+              - AttributeName: source
+                KeyType: HASH
+              - AttributeName: target
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
 
     WordPricingTable:
       Type: AWS::DynamoDB::Table
@@ -61,10 +114,19 @@ resources:
         AttributeDefinitions:
           - AttributeName: id
             AttributeType: S
+          - AttributeName: topic
+            AttributeType: S 
         KeySchema:
           - AttributeName: id
             KeyType: HASH 
-            
+        GlobalSecondaryIndexes:
+          - IndexName: topics
+            KeySchema: 
+              - AttributeName: topic
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
     ServicesTable:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -81,7 +143,7 @@ resources:
     OrdersTable:
       Type: AWS::DynamoDB::Table
       Properties: 
-        TableName: ${self:service}-ordersTable-${sls:stage}
+        TableName: ${self:service}-orderTables-${sls:stage}
         BillingMode: PAY_PER_REQUEST
         AttributeDefinitions:
           - AttributeName: id
@@ -99,8 +161,6 @@ resources:
         KeySchema:
           - AttributeName: id
             KeyType: HASH
-          - AttributeName: paid
-            KeyType: RANGE
         GlobalSecondaryIndexes:
           - IndexName: orderQuery
             KeySchema:
@@ -128,22 +188,65 @@ resources:
                 KeyType: RANGE
             Projection: 
               ProjectionType: ALL
+          
   Outputs:
     OrdersTableArn:
       Value: ${self:custom.ordersTableArn}      
       Export:
         Name: OrdersTable-${self:provider.stage}-Arn
     OrdersTableName:
-      Value: ${self:service}-ordersTable-${sls:stage}
+      Value: ${self:service}-orderTables-${sls:stage}
       Export:
         Name: OrdersTable-${self:provider.stage}-Name
+    ServicesTableName:
+      Value: ${self:service}-servicesTable-${sls:stage}
+      Export:
+        Name: ServicesTable-${self:provider.stage}-Name
+    ServicesTableArn:
+      Value: ${self:custom.servicesTableArn}
+      Export:
+        Name: ServicesTable-${self:provider.stage}-Arn
+    TopicsTableName:
+      Value: ${self:service}-topicPricingTable-${sls:stage}
+      Export:
+        Name: topicsTable-${self:provider.stage}-Name
+    TopicsTableArn:
+      Value: ${self:custom.topicPricingTableArn}
+      Export:
+        Name: topicsTable-${self:provider.stage}-Arn
+
 functions:
+  templogin:
+    handler: src/authentication/templogin.handler
+    events:
+      - httpApi:
+          path: /templogin
+          method: POST
+
+  adminlogin:
+    handler: src/authentication/login.handler
+    events:
+      - httpApi:
+          path: /login
+          method: POST
+      
+  updatepassword:
+    handler: src/authentication/updatepassword.handler
+    events:
+      - httpApi:
+          path: /updatepassword
+          method: POST
+          authorizer:
+            name: adminAuthorizer
+
   createpair:
     handler: src/language_pricing.create_pair
     events:
       - httpApi:
           path: /createpair
           method: POST
+          authorizer:
+            name: adminAuthorizer
 
   getpairs:
     handler: src/language_pricing.get_pairs
@@ -151,6 +254,8 @@ functions:
       - httpApi:
           path: /pairs
           method: GET
+          authorizer:
+            name: adminAuthorizer
 
   editpair:
     handler: src/language_pricing.edit_pair
@@ -158,13 +263,17 @@ functions:
       - httpApi:
           path: /editpair/{id}
           method: PATCH
-  
+          authorizer:
+            name: adminAuthorizer
+
   deletepair:
     handler: src/language_pricing.delete_pair
     events:
       - httpApi:
           path: /deletepair/{id}
           method: DELETE
+          authorizer:
+            name: adminAuthorizer
 
   createtopic:
     handler: src/topic_pricing.create_topic
@@ -172,6 +281,8 @@ functions:
       - httpApi:
           path: /createtopic
           method: POST
+          authorizer:
+            name: adminAuthorizer
 
   gettopics:
     handler: src/topic_pricing.get_topics
@@ -179,6 +290,8 @@ functions:
       - httpApi:
           path: /topics
           method: GET
+          authorizer:
+            name: adminAuthorizer
 
   edittopic:
     handler: src/topic_pricing.edit_topic
@@ -186,13 +299,17 @@ functions:
       - httpApi:
           path: /edittopic/{id}
           method: PATCH
-  
+          authorizer:
+            name: adminAuthorizer
+
   deletetopic:
     handler: src/topic_pricing.delete_topic
     events:
       - httpApi:
           path: /deletetopic/{id}
           method: DELETE
+          authorizer:
+            name: adminAuthorizer
 
   putservices:
     handler: src/package_service.put_service
@@ -200,6 +317,8 @@ functions:
       - httpApi:
           path: /services
           method: PUT
+          authorizer:
+            name: adminAuthorizer
 
   getservices:
     handler: src/package_service.get_service
@@ -207,6 +326,8 @@ functions:
       - httpApi:
           path: /services
           method: GET
+          authorizer:
+            name: adminAuthorizer
 
   getorders:
     handler: src/order.get_orders
@@ -214,6 +335,26 @@ functions:
       - httpApi:
           path: /orders
           method: GET
+          authorizer:
+            name: adminAuthorizer
+
+  getTranslators:
+    handler: src/translatorActions/getTranslators.handler  
+    events:
+      - httpApi:
+          path: /translators
+          method: GET
+          authorizer:
+            name: adminAuthorizer
+
+  getTranslator:
+    handler: src/translatorActions/getTranslator.handler  
+    events:
+      - httpApi:
+          path: /translator/{email}
+          method: GET
+          authorizer:
+            name: adminAuthorizer
 
   approveTranslator:
     handler: src/translatorActions/approveTranslator.handler  
@@ -221,24 +362,36 @@ functions:
       - httpApi:
           path: /approve
           method: POST
-  
-  approveTranslator:
+          authorizer:
+            name: adminAuthorizer
+
+  disapproveTranslator:
     handler: src/translatorActions/disapproveTranslator.handler  
     events:
       - httpApi:
           path: /disapprove
           method: POST  
+          authorizer:
+            name: adminAuthorizer
 
 custom:
   languagePairTableArn: !GetAtt LanguagePairTable.Arn
   topicPricingTableArn: !GetAtt WordPricingTable.Arn
   ordersTableArn: !GetAtt OrdersTable.Arn
   servicesTableArn: !GetAtt ServicesTable.Arn
+  adminPoolArn: !GetAtt AdminPool.Arn
+  cognitoIssuerUrl: 
+    Value: !Join
+      - ''
+      - - 'https://cognito-idp.'
+        - !Ref 'AWS::Region'
+        - '.amazonaws.com/'
+        - !Ref AdminPool
   translatorTable:
-    name: !ImportValue ${self:service}-translatorsTable-${sls:stage}-Name
-    arn: !ImportValue ${self:service}-translatorsTable-${sls:stage}-Arn
+    name: !ImportValue languvi-translator-translatorsTable-${sls:stage}-Name
+    arn: !ImportValue languvi-translator-translatorsTable-${sls:stage}-Arn
   clientTable:
-    name: !ImportValue ${self:service}-clientTable-${sls:stage}-Name
-    arn: !ImportValue ${self:service}-clientTable-${sls:stage}-Arn
+    name: !ImportValue languvi-client-clientTable-${sls:stage}-Name
+    arn: !ImportValue languvi-client-clientTable-${sls:stage}-Arn
   bundle:
     linting: false

@@ -19,7 +19,7 @@ async function approveTranslator(event, response){
         console.error(err)
         sendResponse(501, {message: err.message})
     }
-    sendResponse(201, {message: `${email} is successfully approved!`})
+    return sendResponse(201, {message: `${email} is successfully approved!`})
 }
 
 export const handler = approveTranslator

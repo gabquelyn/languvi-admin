@@ -19,7 +19,7 @@ async function disapproveTranslator(event, response){
         console.error(err)
         sendResponse(501, {message: err.message})
     }
-    sendResponse(201, {message: `${email} is successfully disapproved!`})
+    return sendResponse(201, {message: `${email} is successfully disapproved!`})
 }
 
 export const handler = disapproveTranslator
