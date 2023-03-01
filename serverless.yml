@@ -214,6 +214,15 @@ resources:
       Value: ${self:custom.topicPricingTableArn}
       Export:
         Name: topicsTable-${self:provider.stage}-Arn
+    LanguagePairTableName:
+      Value: ${self:service}-languagePairTable-${sls:stage}
+      Export:
+        Name: languagePairTable-${self:provider.stage}-Name
+    LanguagePairTableArn:
+      Value: ${self:custom.languagePairTableArn}
+      Export:
+        Name: languagePairTable-${self:provider.stage}-Arn
+    
 
 functions:
   templogin:
@@ -373,6 +382,22 @@ functions:
           method: POST  
           authorizer:
             name: adminAuthorizer
+
+# for the client
+  pairprice:
+    handler: src/clientwordpricing.handler
+    events:
+      - httpApi:
+          path: /pair/{source}/{target}
+          method: GET
+
+  pairprice:
+    handler: src/clientwordpricing.handler
+    events:
+      - httpApi:
+          path: /pair/{topic}
+          method: GET
+          
 
 custom:
   languagePairTableArn: !GetAtt LanguagePairTable.Arn
