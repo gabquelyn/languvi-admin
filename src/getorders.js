@@ -1,64 +1,59 @@
 import AWS from "aws-sdk";
 const tableName = process.env.ORDERS_TABLE;
 const dynamodb = new AWS.DynamoDB.DocumentClient();
-AWS.config.update({ region: "us-east-1" });
-
-export async function get_orders(event, context) {
+import sendResponse from '../lib/sendResponse'
+async function get_orders(event, context) {
   const now = new Date().toISOString();
-  let body
+  let body;
   let statusCode;
   if (event.queryStringParameters) {
     const { sort } = event.queryStringParameters;
-    let KeyConditionExpression
-    let ExpressionAttributeValues
-    let IndexName
-    if ((sort == "unassigned_order")) {
-      KeyConditionExpression = "paid = :true AND translator = :t";
+    let KeyConditionExpression;
+    let ExpressionAttributeValues;
+    let IndexName;
+    if (sort == "unassigned_order") {
+      KeyConditionExpression = "translator = :t";
       ExpressionAttributeValues = {
-        ":true": 1,
         ":t": "null",
       };
-      IndexName = 'orderQuery'
+      IndexName = "translateprojects";
     } else if (sort == "unassigned_proofreading") {
-      KeyConditionExpression = "paid = :true AND proofreader = :null_value";
+      KeyConditionExpression = "proofreader = :null_value";
       ExpressionAttributeValues = {
-        ":true": 1,
         ":null_value": "null",
       };
-      IndexName = 'proofreadingQuery'
+      IndexName = "proofreadProjects";
     } else if (sort == "ongoing") {
-      (KeyConditionExpression = "standing = :status AND due_date > :date"),
+      (KeyConditionExpression = "paid = :p AND due_date > :date"),
         (ExpressionAttributeValues = {
-          ":status": 'good',
+          ":paid": 1,
           ":date": now,
         });
-        IndexName = "statusAndDue"
+      IndexName = "transaction";
     } else if (sort == "ongoing_proofreading") {
-      KeyConditionExpression =
-        "translator <> :null_value AND due_date > :date";
+      KeyConditionExpression = "proofreader <> :null_value";
       ExpressionAttributeValues = {
-        ":date": now,
         ":null_value": "null",
       };
-      IndexName = 'proofreadingQuery'
+      IndexName = "proofreader";
     } else if (sort == "canceled") {
       KeyConditionExpression = "standing = :status";
       ExpressionAttributeValues = {
         ":status": "canceled",
       };
-      IndexName = "statusAndDue"
+      IndexName = "statusAndDue";
     } else if (sort == "completed") {
       KeyConditionExpression = "standing = :status";
       ExpressionAttributeValues = {
         ":status": "completed",
       };
-      IndexName = 'statusAndDue'
+      IndexName = "statusAndDue";
     } else if (sort == "revision") {
       KeyConditionExpression = "standing = :status";
       ExpressionAttributeValues = {
         ":status": "revision",
       };
-      IndexName = 'statusAndDue'
+      IndexName = "statusAndDue";
     }
 
     const params = {
@@ -77,22 +72,21 @@ export async function get_orders(event, context) {
       body = { message: err.message };
       statusCode = 501;
     }
-  }else{
-    try{
-        const result = await dynamodb.scan({TableName: tableName}).promise()
-        body = result.Items
-        statusCode = 200
-    }catch(err){
-        body = {message: err.message}
-        statusCode = 500
+  } else {
+    try {
+      const result = await dynamodb.scan({ TableName: tableName }).promise();
+      body = result.Items;
+      statusCode = 200;
+    } catch (err) {
+      body = { message: err.message };
+      statusCode = 500;
     }
   }
 
-  return{
+  return {
     statusCode,
-    body: JSON.stringify(body)
-  }
-  }
+    body: JSON.stringify(body),
+  };
+}
 
-
-
+export const handler = get_orders

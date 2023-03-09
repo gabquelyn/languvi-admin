@@ -3,6 +3,7 @@ import sendResponse from "../../lib/sendResponse";
 const UserPoolId = process.env.ADMIN_POOL_ID;
 const ClientId = process.env.ADMIN_CLIENT_ID;
 const cognito = new AWS.CognitoIdentityServiceProvider();
+
 export async function login(event, context) {
   const { email, password } = JSON.parse(event.body);
   const params = {
@@ -19,7 +20,7 @@ export async function login(event, context) {
     const response = await cognito.adminInitiateAuth(params).promise();
     return sendResponse(200, {
       message: "Success",
-      token: response.AuthenticationResult.AccessToken,
+      token: response.AuthenticationResult,
     });
   } catch (err) {
     console.error(err);

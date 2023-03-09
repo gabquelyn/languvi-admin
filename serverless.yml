@@ -16,11 +16,12 @@ provider:
     LANGUAGE_PAIR_TABLE: ${self:service}-languagePairTable-${sls:stage}
     TOPIC_PRICING_TABLE: ${self:service}-topicPricingTable-${sls:stage}
     SERVICE_TABLE: ${self:service}-servicesTable-${sls:stage}
-    ORDERS_TABLE: ${self:service}-orderTables-${sls:stage}
+    ORDERS_TABLE: ${self:service}-clientOrdersTable-${sls:stage}
     TRANSLATORS_TABLE: ${self:custom.translatorTable.name}
     CLIENTS_TABLE: ${self:custom.clientTable.name}
     ADMIN_POOL_ID: { Ref: AdminPool }
     ADMIN_CLIENT_ID : { Ref: AdminClient}
+    MAIL_QUEUE_URL : ${self:custom.mailQueue.url}
   iam:
     role:
       statements:
@@ -36,15 +37,20 @@ provider:
             - cognito-idp:AdminCreateUser
             - cognito-idp:AdminSetUserPassword
             - cognito-idp:AdminUpdateUserAttributes
+            - sqs:SendMessage
+
           Resource:
             - ${self:custom.topicPricingTableArn}
             - ${self:custom.servicesTableArn}
             - ${self:custom.languagePairTableArn}
-            - ${self:custom.ordersTableArn}
+            - ${self:custom.clientOrdersTableArn}
             - ${self:custom.translatorTable.arn}
             - ${self:custom.clientTable.arn}
             - ${self:custom.adminPoolArn}
+            - ${self:custom.mailQueue.arn}
+
   httpApi:
+    cors: true
     authorizers:
       adminAuthorizer:
         type: jwt
@@ -140,10 +146,10 @@ resources:
             KeyType: HASH 
     
     # this table should generate all filters for the client side
-    OrdersTable:
+    ClientOrdersTable:
       Type: AWS::DynamoDB::Table
       Properties: 
-        TableName: ${self:service}-orderTables-${sls:stage}
+        TableName: ${self:service}-clientOrdersTable-${sls:stage}
         BillingMode: PAY_PER_REQUEST
         AttributeDefinitions:
           - AttributeName: id
@@ -158,46 +164,94 @@ resources:
             AttributeType: S
           - AttributeName: standing
             AttributeType: S
+          - AttributeName: owner
+            AttributeType: S
         KeySchema:
           - AttributeName: id
             KeyType: HASH
         GlobalSecondaryIndexes:
-          - IndexName: orderQuery
+          - IndexName: proofreadProjects
             KeySchema:
-              - AttributeName: paid
-                KeyType: HASH
-              - AttributeName: translator
-                KeyType: RANGE
-            Projection: 
-              ProjectionType: ALL
-
-          - IndexName: proofreadingQuery
-            KeySchema:
-              - AttributeName: paid
-                KeyType: HASH
               - AttributeName: proofreader
-                KeyType: RANGE
+                KeyType: HASH
             Projection: 
               ProjectionType: ALL
 
-          - IndexName: statusAndDue
+          - IndexName: translateprojects
+            KeySchema:
+              - AttributeName: translator
+                KeyType: HASH
+            Projection: 
+              ProjectionType: ALL
+
+          - IndexName: clientOrders
+            KeySchema:
+              - AttributeName: owner
+                KeyType: HASH
+            Projection: 
+              ProjectionType: ALL
+
+          - IndexName: orderStatus
             KeySchema:
               - AttributeName: standing
+                KeyType: HASH
+            Projection: 
+              ProjectionType: ALL
+
+          - IndexName: transaction
+            KeySchema:
+              - AttributeName: paid
                 KeyType: HASH
               - AttributeName: due_date
                 KeyType: RANGE
             Projection: 
               ProjectionType: ALL
+
+          # - IndexName: ongoingTranslation
+          #   KeySchema:
+          #     - AttributeName: translator
+          #       KeyType: HASH
+          #     - AttributeName: due_date
+          #       KeyType: RANGE
+          #   Projection: 
+          #     ProjectionType: ALL
+
+          # - IndexName: ongoingProofreading
+          #   KeySchema: 
+          #     - AttributeName: proofreader
+          #       KeyType: HASH
+          #     - AtributeName: due_date
+          #       KeyType: RANGE
+          #   Projection: 
+          #     ProjectionType: ALL
+
+          # - IndexName: unassignedTranslator
+          #   KeySchema: 
+          #     - AttributeName: translator
+          #       KeyType: HASH
+          #     - AtributeName: paid
+          #       KeyType: RANGE
+          #   Projection: 
+          #     ProjectionType: ALL
+
+          # - IndexName: unassignedProofreading
+          #   KeySchema: 
+          #     - AttributeName: proofreader
+          #       KeyType: HASH
+          #     - AtributeName: paid
+          #       KeyType: RANGE
+          #   Projection: 
+          #     ProjectionType: ALL
           
   Outputs:
-    OrdersTableArn:
-      Value: ${self:custom.ordersTableArn}      
+    ClientOrdersTableArn:
+      Value: ${self:custom.clientOrdersTableArn}      
       Export:
-        Name: OrdersTable-${self:provider.stage}-Arn
-    OrdersTableName:
-      Value: ${self:service}-orderTables-${sls:stage}
+        Name: clientOrdersTable-${self:provider.stage}-Arn
+    clientOrdersTableName:
+      Value: ${self:service}-clientOrdersTable-${sls:stage}
       Export:
-        Name: OrdersTable-${self:provider.stage}-Name
+        Name: clientOrdersTable-${self:provider.stage}-Name
     ServicesTableName:
       Value: ${self:service}-servicesTable-${sls:stage}
       Export:
@@ -206,22 +260,6 @@ resources:
       Value: ${self:custom.servicesTableArn}
       Export:
         Name: ServicesTable-${self:provider.stage}-Arn
-    TopicsTableName:
-      Value: ${self:service}-topicPricingTable-${sls:stage}
-      Export:
-        Name: topicsTable-${self:provider.stage}-Name
-    TopicsTableArn:
-      Value: ${self:custom.topicPricingTableArn}
-      Export:
-        Name: topicsTable-${self:provider.stage}-Arn
-    LanguagePairTableName:
-      Value: ${self:service}-languagePairTable-${sls:stage}
-      Export:
-        Name: languagePairTable-${self:provider.stage}-Name
-    LanguagePairTableArn:
-      Value: ${self:custom.languagePairTableArn}
-      Export:
-        Name: languagePairTable-${self:provider.stage}-Arn
     
 
 functions:
@@ -271,7 +309,7 @@ functions:
     events:
       - httpApi:
           path: /editpair/{id}
-          method: PATCH
+          method: POST
           authorizer:
             name: adminAuthorizer
 
@@ -307,7 +345,7 @@ functions:
     events:
       - httpApi:
           path: /edittopic/{id}
-          method: PATCH
+          method: POST
           authorizer:
             name: adminAuthorizer
 
@@ -339,11 +377,29 @@ functions:
             name: adminAuthorizer
 
   getorders:
-    handler: src/order.get_orders
+    handler: src/getorders.handler
     events:
       - httpApi:
           path: /orders
           method: GET
+          authorizer:
+            name: adminAuthorizer
+
+  getorder:
+    handler: src/getorder.handler
+    events:
+      - httpApi:
+          path: /order/{orderId}
+          method: GET
+          authorizer:
+            name: adminAuthorizer
+
+  editorder:
+    handler: src/editorder.handler  
+    events:
+      - httpApi:
+          path: /editorder/{orderId}
+          method: POST  
           authorizer:
             name: adminAuthorizer
 
@@ -383,7 +439,8 @@ functions:
           authorizer:
             name: adminAuthorizer
 
-# for the client
+
+# for the client the iam role for scan is provided only to the admin
   pairprice:
     handler: src/clientwordpricing.handler
     events:
@@ -391,18 +448,18 @@ functions:
           path: /pair/{source}/{target}
           method: GET
 
-  pairprice:
-    handler: src/clientwordpricing.handler
+  topicprice:
+    handler: src/clientsubjectpricing.handler
     events:
       - httpApi:
-          path: /pair/{topic}
+          path: /topic/{topic}
           method: GET
           
 
 custom:
   languagePairTableArn: !GetAtt LanguagePairTable.Arn
   topicPricingTableArn: !GetAtt WordPricingTable.Arn
-  ordersTableArn: !GetAtt OrdersTable.Arn
+  clientOrdersTableArn: !GetAtt ClientOrdersTable.Arn
   servicesTableArn: !GetAtt ServicesTable.Arn
   adminPoolArn: !GetAtt AdminPool.Arn
   cognitoIssuerUrl: 
@@ -415,6 +472,9 @@ custom:
   translatorTable:
     name: !ImportValue languvi-translator-translatorsTable-${sls:stage}-Name
     arn: !ImportValue languvi-translator-translatorsTable-${sls:stage}-Arn
+  mailQueue:
+    arn: !ImportValue MailQueue-${sls:stage}-Arn
+    url: !ImportValue MailQueue-${sls:stage}-Url
   clientTable:
     name: !ImportValue languvi-client-clientTable-${sls:stage}-Name
     arn: !ImportValue languvi-client-clientTable-${sls:stage}-Arn
