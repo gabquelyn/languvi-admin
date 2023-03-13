@@ -260,7 +260,23 @@ resources:
       Value: ${self:custom.servicesTableArn}
       Export:
         Name: ServicesTable-${self:provider.stage}-Arn
-    
+    LanguagePairTableName: 
+      Value: ${self:service}-languagePairTable-${sls:stage}
+      Export:
+        Name: LanguagePairTable-${self:provider.stage}-Name
+    LanguagePairTableArn:
+      Value:  ${self:custom.languagePairTableArn}
+      Export:
+        Name: LanguagePairTable-${self:provider.stage}-Arn
+
+    TopicsTableTableName: 
+      Value: ${self:service}-topicPricingTable-${sls:stage}
+      Export:
+        Name: topicsTableTable-${self:provider.stage}-Name
+    TopicsTableTableArn:
+      Value:  ${self:custom.topicPricingTableArn}
+      Export:
+        Name: topicsTableTable-${self:provider.stage}-Arn
 
 functions:
   templogin:
@@ -412,6 +428,15 @@ functions:
           authorizer:
             name: adminAuthorizer
 
+  getClients:
+    handler: src/clientActions/getClients.handler  
+    events:
+      - httpApi:
+          path: /clients
+          method: GET
+          authorizer:
+            name: adminAuthorizer
+
   getTranslator:
     handler: src/translatorActions/getTranslator.handler  
     events:
@@ -438,23 +463,6 @@ functions:
           method: POST  
           authorizer:
             name: adminAuthorizer
-
-
-# for the client the iam role for scan is provided only to the admin
-  pairprice:
-    handler: src/clientwordpricing.handler
-    events:
-      - httpApi:
-          path: /pair/{source}/{target}
-          method: GET
-
-  topicprice:
-    handler: src/clientsubjectpricing.handler
-    events:
-      - httpApi:
-          path: /topic/{topic}
-          method: GET
-          
 
 custom:
   languagePairTableArn: !GetAtt LanguagePairTable.Arn
