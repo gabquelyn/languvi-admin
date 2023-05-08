@@ -1,92 +1,137 @@
 import AWS from "aws-sdk";
-const tableName = process.env.ORDERS_TABLE;
+const TableName = process.env.ORDERS_TABLE;
 const dynamodb = new AWS.DynamoDB.DocumentClient();
-import sendResponse from '../lib/sendResponse'
+import sendResponse from "../lib/sendResponse";
 async function get_orders(event, context) {
-  const now = new Date().toISOString();
-  let body;
-  let statusCode;
-  if (event.queryStringParameters) {
+  if (event.queryStringParameters?.sort) {
     const { sort } = event.queryStringParameters;
-    let KeyConditionExpression;
-    let ExpressionAttributeValues;
-    let IndexName;
-    if (sort == "unassigned_order") {
-      KeyConditionExpression = "translator = :t";
+    let KeyConditionExpression,
+      ExpressionAttributeNames,
+      ExpressionAttributeValues,
+      IndexName;
+      
+      if (sort === "unapproved") {
+        KeyConditionExpression = "#status = :t";
+        ExpressionAttributeValues = {
+          ":t": "unapproved",
+        };
+        ExpressionAttributeNames = {
+          "#status": "standing",
+        };
+        IndexName = "orderStatus";
+      }
+
+    if (sort === "paid") {
+      KeyConditionExpression = "#paid = :t";
       ExpressionAttributeValues = {
-        ":t": "null",
+        ":t": 1,
       };
-      IndexName = "translateprojects";
-    } else if (sort == "unassigned_proofreading") {
-      KeyConditionExpression = "proofreader = :null_value";
+      ExpressionAttributeNames = {
+        "#paid": "paid",
+      };
+      IndexName = "transactions";
+    }
+
+    if (sort === "completed") {
+      KeyConditionExpression = "#status = :t";
       ExpressionAttributeValues = {
-        ":null_value": "null",
+        ":t": "completed",
       };
-      IndexName = "proofreadProjects";
-    } else if (sort == "ongoing") {
-      (KeyConditionExpression = "paid = :p AND due_date > :date"),
-        (ExpressionAttributeValues = {
-          ":paid": 1,
-          ":date": now,
-        });
-      IndexName = "transaction";
-    } else if (sort == "ongoing_proofreading") {
-      KeyConditionExpression = "proofreader <> :null_value";
+      ExpressionAttributeNames = {
+        "#status": "standing",
+      };
+      IndexName = "orderStatus";
+    }
+    
+    if (sort === "revision") {
+      KeyConditionExpression = "#status = :t";
       ExpressionAttributeValues = {
-        ":null_value": "null",
+        ":t": "revision",
       };
-      IndexName = "proofreader";
-    } else if (sort == "canceled") {
-      KeyConditionExpression = "standing = :status";
+      ExpressionAttributeNames = {
+        "#status": "standing",
+      };
+      IndexName = "orderStatus";
+    }
+
+    if (sort === "ongoing_translation") {
+      KeyConditionExpression = "#status = :t";
       ExpressionAttributeValues = {
-        ":status": "canceled",
+        ":t" : "translating"
       };
-      IndexName = "statusAndDue";
-    } else if (sort == "completed") {
-      KeyConditionExpression = "standing = :status";
+      ExpressionAttributeNames = {
+        "#status": "standing",
+      };
+      IndexName = "orderStatus";
+    }
+
+    if (sort === "unassigned_translation") {
+      KeyConditionExpression = "#status = :t";
       ExpressionAttributeValues = {
-        ":status": "completed",
+        ":t" : "unassigned translation"
       };
-      IndexName = "statusAndDue";
-    } else if (sort == "revision") {
-      KeyConditionExpression = "standing = :status";
+      ExpressionAttributeNames = {
+        "#status": "standing",
+      };
+      IndexName = "orderStatus";
+    }
+
+    if (sort === "unassigned_proofreading") {
+      KeyConditionExpression = "#status = :t";
       ExpressionAttributeValues = {
-        ":status": "revision",
+        ":t" : "unassigned proofreading"
       };
-      IndexName = "statusAndDue";
+      ExpressionAttributeNames = {
+        "#status": "standing",
+      };
+      IndexName = "orderStatus";
+    }
+
+    if (sort === "ongoing_proofreading") {
+      KeyConditionExpression = "#status = :t";
+      ExpressionAttributeValues = {
+        ":t" : "proofreading"
+      };
+      ExpressionAttributeNames = {
+        "#status": "standing",
+      };
+      IndexName = "orderStatus";
+    }
+
+    if (sort === "awaiting_revision") {
+      KeyConditionExpression = "#status = :p";
+      ExpressionAttributeValues = {
+        ":p": "awaiting revision",
+      };
+      ExpressionAttributeNames = {
+        "#status": "standing",
+      };
+      IndexName = "orderStatus";
     }
 
     const params = {
-      TableName: tableName,
-      IndexName,
+      TableName,
       KeyConditionExpression,
       ExpressionAttributeValues,
-    };
+      ExpressionAttributeNames,
+      IndexName
+    }
 
     try {
       const result = await dynamodb.query(params).promise();
-      body = result.Items;
-      statusCode = 200;
+      return sendResponse(200, { message: result.Items });
     } catch (err) {
       console.error(err);
-      body = { message: err.message };
-      statusCode = 501;
+      return sendResponse(501, { message: err.message });
     }
   } else {
     try {
-      const result = await dynamodb.scan({ TableName: tableName }).promise();
-      body = result.Items;
-      statusCode = 200;
+      const result = await dynamodb.scan({ TableName }).promise();
+      return sendResponse(200, { message: result.Items });
     } catch (err) {
-      body = { message: err.message };
-      statusCode = 500;
+      return sendResponse(501, { message: err.message });
     }
   }
-
-  return {
-    statusCode,
-    body: JSON.stringify(body),
-  };
 }
 
-export const handler = get_orders
+export const handler = get_orders;

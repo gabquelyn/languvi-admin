@@ -22,6 +22,7 @@ provider:
     ADMIN_POOL_ID: { Ref: AdminPool }
     ADMIN_CLIENT_ID : { Ref: AdminClient}
     MAIL_QUEUE_URL : ${self:custom.mailQueue.url}
+    CLIENT_BUCKET_NAME : ${self:custom.clientBucket.name}
   iam:
     role:
       statements:
@@ -38,7 +39,9 @@ provider:
             - cognito-idp:AdminSetUserPassword
             - cognito-idp:AdminUpdateUserAttributes
             - sqs:SendMessage
-
+            - sqs:SendMessage
+            - s3:PutObject
+            
           Resource:
             - ${self:custom.topicPricingTableArn}
             - ${self:custom.servicesTableArn}
@@ -48,6 +51,7 @@ provider:
             - ${self:custom.clientTable.arn}
             - ${self:custom.adminPoolArn}
             - ${self:custom.mailQueue.arn}
+            - ${self:custom.clientBucket.arn}
 
   httpApi:
     cors: true
@@ -198,50 +202,29 @@ resources:
             Projection: 
               ProjectionType: ALL
 
-          - IndexName: transaction
+          - IndexName: dueOrders
             KeySchema:
-              - AttributeName: paid
-                KeyType: HASH
               - AttributeName: due_date
-                KeyType: RANGE
+                KeyType: HASH
             Projection: 
               ProjectionType: ALL
 
-          # - IndexName: ongoingTranslation
-          #   KeySchema:
-          #     - AttributeName: translator
-          #       KeyType: HASH
-          #     - AttributeName: due_date
-          #       KeyType: RANGE
-          #   Projection: 
-          #     ProjectionType: ALL
+          - IndexName: transactions
+            KeySchema:
+              - AttributeName: paid
+                KeyType: HASH
+            Projection: 
+              ProjectionType: ALL
 
-          # - IndexName: ongoingProofreading
-          #   KeySchema: 
-          #     - AttributeName: proofreader
-          #       KeyType: HASH
-          #     - AtributeName: due_date
-          #       KeyType: RANGE
-          #   Projection: 
-          #     ProjectionType: ALL
+          - IndexName: translatorpool
+            KeySchema:
+              - AttributeName: paid
+                KeyType: HASH
+              - AttributeName: translator
+                KeyType: RANGE                
+            Projection: 
+              ProjectionType: ALL
 
-          # - IndexName: unassignedTranslator
-          #   KeySchema: 
-          #     - AttributeName: translator
-          #       KeyType: HASH
-          #     - AtributeName: paid
-          #       KeyType: RANGE
-          #   Projection: 
-          #     ProjectionType: ALL
-
-          # - IndexName: unassignedProofreading
-          #   KeySchema: 
-          #     - AttributeName: proofreader
-          #       KeyType: HASH
-          #     - AtributeName: paid
-          #       KeyType: RANGE
-          #   Projection: 
-          #     ProjectionType: ALL
           
   Outputs:
     ClientOrdersTableArn:
@@ -347,11 +330,47 @@ functions:
           authorizer:
             name: adminAuthorizer
 
+  sendpaymentemail:
+    handler: src/clientActions/sendclientpaymentemail.handler
+    events:
+      - httpApi:
+          path: /paymentaction
+          method: POST
+          authorizer:
+            name: adminAuthorizer
+
+  cancel:
+    handler: src/clientActions/cancelorder.handler
+    events:
+      - httpApi:
+          path: /reject/{orderId}
+          method: GET
+          authorizer:
+            name: adminAuthorizer
+
+  undocancel:
+    handler: src/clientActions/undocancel.handler
+    events:
+      - httpApi:
+          path: /accept/{orderId}
+          method: GET
+          authorizer:
+            name: adminAuthorizer
+
   gettopics:
     handler: src/topic_pricing.get_topics
     events:
       - httpApi:
           path: /topics
+          method: GET
+          authorizer:
+            name: adminAuthorizer
+
+  getjobs:
+    handler: src/getjobs.handler
+    events:
+      - httpApi:
+          path: /jobs
           method: GET
           authorizer:
             name: adminAuthorizer
@@ -401,6 +420,15 @@ functions:
           authorizer:
             name: adminAuthorizer
 
+  translatorforpair:
+    handler: src/getTranslatorForOrder.handler
+    events:
+      - httpApi:
+          path: /translators/{from}/{to}
+          method: GET
+          authorizer:
+            name: adminAuthorizer
+
   getorder:
     handler: src/getorder.handler
     events:
@@ -446,11 +474,20 @@ functions:
           authorizer:
             name: adminAuthorizer
 
+  getclientfiles:
+    handler: src/clientActions/getfiles.handler  
+    events:
+      - httpApi:
+          path: /files
+          method: POST
+          authorizer:
+            name: adminAuthorizer
+
   approveTranslator:
     handler: src/translatorActions/approveTranslator.handler  
     events:
       - httpApi:
-          path: /approve
+          path: /approveorder
           method: POST
           authorizer:
             name: adminAuthorizer
@@ -486,5 +523,8 @@ custom:
   clientTable:
     name: !ImportValue languvi-client-clientTable-${sls:stage}-Name
     arn: !ImportValue languvi-client-clientTable-${sls:stage}-Arn
+  clientBucket:
+    name: !ImportValue languvi-client-clientBucket-${sls:stage}-Name
+    arn: !ImportValue languvi-client-clientBucket-${sls:stage}-Arn
   bundle:
     linting: false
