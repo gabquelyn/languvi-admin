@@ -8,7 +8,7 @@ const cancel = async(event, context) => {
         Key: {id: orderId},
         UpdateExpression: 'set cancelled = :yes',
         ExpressionAttributeValues:{
-            ':c' : true,
+            ':yes' : "true",
         }
 
     }

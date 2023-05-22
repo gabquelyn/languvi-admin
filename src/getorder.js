@@ -7,8 +7,14 @@ async function getorder(event, context){
         const order_result = await dynamodb.get({
             TableName: process.env.ORDERS_TABLE,
             Key : {id : orderId}
+        }).promise();
+
+        const client = await dynamodb.get({
+            TableName: process.env.CLIENTS_TABLE,
+            Key: {email: order_result.Item.owner}
         }).promise()
-        return sendResponse(200, {message: order_result.Item})
+
+        return sendResponse(200, {message: order_result.Item, owner: client.Item})
     }catch(err){
         console.error(err)
         return sendResponse(404, {message: `Order of id: ${orderId} does not exist!`})

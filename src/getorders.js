@@ -9,17 +9,44 @@ async function get_orders(event, context) {
       ExpressionAttributeNames,
       ExpressionAttributeValues,
       IndexName;
-      
-      if (sort === "unapproved") {
-        KeyConditionExpression = "#status = :t";
-        ExpressionAttributeValues = {
-          ":t": "unapproved",
-        };
-        ExpressionAttributeNames = {
-          "#status": "standing",
-        };
-        IndexName = "orderStatus";
-      }
+
+    if (sort === "due") {
+      const params = {
+        TableName,
+        KeyConditionExpression: "#paid = :t",
+        ExpressionAttributeValues: {
+          ":t": 1,
+        },
+        ExpressionAttributeNames: {
+          "#paid": "paid",
+        },
+        IndexName: "transactions",
+      };
+      const result = await dynamodb.query(params).promise();
+      const now = new Date();
+      const due_orders = result.Items.filter((order) => {
+        const ends = new Date(order.order_due);
+        if (
+          now > ends &&
+          order.cancelled === "false" &&
+          order.standing !== "completed"
+        ) {
+          return order;
+        }
+      });
+      return sendResponse(200, { message: due_orders});
+    }
+
+    if (sort === "unapproved") {
+      KeyConditionExpression = "#status = :t";
+      ExpressionAttributeValues = {
+        ":t": "unapproved",
+      };
+      ExpressionAttributeNames = {
+        "#status": "standing",
+      };
+      IndexName = "orderStatus";
+    }
 
     if (sort === "paid") {
       KeyConditionExpression = "#paid = :t";
@@ -42,7 +69,7 @@ async function get_orders(event, context) {
       };
       IndexName = "orderStatus";
     }
-    
+
     if (sort === "revision") {
       KeyConditionExpression = "#status = :t";
       ExpressionAttributeValues = {
@@ -57,7 +84,7 @@ async function get_orders(event, context) {
     if (sort === "ongoing_translation") {
       KeyConditionExpression = "#status = :t";
       ExpressionAttributeValues = {
-        ":t" : "translating"
+        ":t": "translating",
       };
       ExpressionAttributeNames = {
         "#status": "standing",
@@ -68,7 +95,7 @@ async function get_orders(event, context) {
     if (sort === "unassigned_translation") {
       KeyConditionExpression = "#status = :t";
       ExpressionAttributeValues = {
-        ":t" : "unassigned translation"
+        ":t": "unassigned translation",
       };
       ExpressionAttributeNames = {
         "#status": "standing",
@@ -79,7 +106,7 @@ async function get_orders(event, context) {
     if (sort === "unassigned_proofreading") {
       KeyConditionExpression = "#status = :t";
       ExpressionAttributeValues = {
-        ":t" : "unassigned proofreading"
+        ":t": "unassigned proofreading",
       };
       ExpressionAttributeNames = {
         "#status": "standing",
@@ -90,7 +117,7 @@ async function get_orders(event, context) {
     if (sort === "ongoing_proofreading") {
       KeyConditionExpression = "#status = :t";
       ExpressionAttributeValues = {
-        ":t" : "proofreading"
+        ":t": "proofreading",
       };
       ExpressionAttributeNames = {
         "#status": "standing",
@@ -101,7 +128,40 @@ async function get_orders(event, context) {
     if (sort === "awaiting_revision") {
       KeyConditionExpression = "#status = :p";
       ExpressionAttributeValues = {
-        ":p": "awaiting revision",
+        ":p": "revision",
+      };
+      ExpressionAttributeNames = {
+        "#status": "standing",
+      };
+      IndexName = "orderStatus";
+    }
+
+    if (sort === "offers") {
+      KeyConditionExpression = "#status = :p";
+      ExpressionAttributeValues = {
+        ":p": "awaiting payment",
+      };
+      ExpressionAttributeNames = {
+        "#status": "standing",
+      };
+      IndexName = "orderStatus";
+    }
+
+    // if (sort === "due") {
+    //   KeyConditionExpression = "#status = :p";
+    //   ExpressionAttributeValues = {
+    //     ":p": "due",
+    //   };
+    //   ExpressionAttributeNames = {
+    //     "#status": "standing",
+    //   };
+    //   IndexName = "orderStatus";
+    // }
+
+    if (sort === "cancelled") {
+      KeyConditionExpression = "#status = :p";
+      ExpressionAttributeValues = {
+        ":p": "cancelled",
       };
       ExpressionAttributeNames = {
         "#status": "standing",
@@ -114,8 +174,8 @@ async function get_orders(event, context) {
       KeyConditionExpression,
       ExpressionAttributeValues,
       ExpressionAttributeNames,
-      IndexName
-    }
+      IndexName,
+    };
 
     try {
       const result = await dynamodb.query(params).promise();
@@ -125,8 +185,19 @@ async function get_orders(event, context) {
       return sendResponse(501, { message: err.message });
     }
   } else {
+    const params = {
+      TableName,
+      KeyConditionExpression: "#ordered = :true",
+      ExpressionAttributeValues: {
+        ":true": 1,
+      },
+      ExpressionAttributeNames: {
+        "#ordered": "paid",
+      },
+      IndexName: "transactions",
+    };
     try {
-      const result = await dynamodb.scan({ TableName }).promise();
+      const result = await dynamodb.query(params).promise();
       return sendResponse(200, { message: result.Items });
     } catch (err) {
       return sendResponse(501, { message: err.message });

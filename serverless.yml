@@ -23,6 +23,8 @@ provider:
     ADMIN_CLIENT_ID : { Ref: AdminClient}
     MAIL_QUEUE_URL : ${self:custom.mailQueue.url}
     CLIENT_BUCKET_NAME : ${self:custom.clientBucket.name}
+    API_KEY: ${self:custom.mateCatKeys.api}
+    SECRET_KEY: ${self:custom.mateCatKeys.secret}
   iam:
     role:
       statements:
@@ -41,6 +43,7 @@ provider:
             - sqs:SendMessage
             - sqs:SendMessage
             - s3:PutObject
+            - s3:DeleteObject
             
           Resource:
             - ${self:custom.topicPricingTableArn}
@@ -343,8 +346,16 @@ functions:
     handler: src/clientActions/cancelorder.handler
     events:
       - httpApi:
-          path: /reject/{orderId}
-          method: GET
+          path: /reject
+          method: POST
+          authorizer:
+            name: adminAuthorizer
+  complete:
+    handler: src/clientActions/markcomplete.handler
+    events:
+      - httpApi:
+          path: /complete
+          method: POST
           authorizer:
             name: adminAuthorizer
 
@@ -352,8 +363,8 @@ functions:
     handler: src/clientActions/undocancel.handler
     events:
       - httpApi:
-          path: /accept/{orderId}
-          method: GET
+          path: /accept
+          method: POST
           authorizer:
             name: adminAuthorizer
 
@@ -442,7 +453,7 @@ functions:
     handler: src/editorder.handler  
     events:
       - httpApi:
-          path: /editorder/{orderId}
+          path: /editorder
           method: POST  
           authorizer:
             name: adminAuthorizer
@@ -465,6 +476,24 @@ functions:
           authorizer:
             name: adminAuthorizer
 
+  detatchFile:
+    handler: src/clientActions/detatchFile.handler  
+    events:
+      - httpApi:
+          path: /detatch
+          method: POST
+          authorizer:
+            name: adminAuthorizer
+
+  attatchFiles:
+    handler: src/clientActions/attatchfile.handler  
+    events:
+      - httpApi:
+          path: /attatch
+          method: POST
+          authorizer:
+            name: adminAuthorizer
+
   getTranslator:
     handler: src/translatorActions/getTranslator.handler  
     events:
@@ -473,21 +502,12 @@ functions:
           method: GET
           authorizer:
             name: adminAuthorizer
-
-  getclientfiles:
-    handler: src/clientActions/getfiles.handler  
-    events:
-      - httpApi:
-          path: /files
-          method: POST
-          authorizer:
-            name: adminAuthorizer
-
+            
   approveTranslator:
     handler: src/translatorActions/approveTranslator.handler  
     events:
       - httpApi:
-          path: /approveorder
+          path: /approve
           method: POST
           authorizer:
             name: adminAuthorizer
@@ -498,6 +518,15 @@ functions:
       - httpApi:
           path: /disapprove
           method: POST  
+          authorizer:
+            name: adminAuthorizer
+
+  openMate:
+    handler: src/clientActions/useCat.handler  
+    events:
+      - httpApi:
+          path: /usecat
+          method: POST 
           authorizer:
             name: adminAuthorizer
 
@@ -526,5 +555,15 @@ custom:
   clientBucket:
     name: !ImportValue languvi-client-clientBucket-${sls:stage}-Name
     arn: !ImportValue languvi-client-clientBucket-${sls:stage}-Arn
+  mateCatKeys:
+    api: ZTEwOWMTEwNT0ce62be1
+    secret: Y2YyMGOGY3Yz1728d413
+  
+  custom:
   bundle:
     linting: false
+    webpackConfig:
+      module:
+        rules:
+          - test: /node_libcurl\.node$/
+            loader: file-loader

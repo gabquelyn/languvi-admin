@@ -3,68 +3,46 @@ import AWS from "aws-sdk";
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 const getJobs = async (event, context) => {
   const user = event.requestContext.authorizer.jwt.claims.username;
-  if (event.queryStringParameters?.sort) {
-    const { sort } = event.queryStringParameters;
-    let KeyConditionExpression, ExpressionAttributeValues, IndexName;
-    if (sort === "translateprojects") {
-      KeyConditionExpression = "translator = :t";
-      ExpressionAttributeValues = {
-        ":t": user,
-      };
-      IndexName = "translateprojects";
-    } else if ((sort === "proofreadprojects")) {
-      KeyConditionExpression = "proofreader = :p";
-      ExpressionAttributeValues = {
-        ":p": user,
-      };
-      IndexName = "proofreadProjects";
-    }
+   const t_params = {
+    TableName: process.env.ORDERS_TABLE,
+    IndexName: "translateprojects",
+    KeyConditionExpression: "translator = :t",
+    ExpressionAttributeValues: {
+      ":t": user,
+    },
+  };
 
-    const params = {
-      TableName: process.env.ORDERS_TABLE,
-      IndexName,
-      KeyConditionExpression,
-      ExpressionAttributeValues,
-    };
+  const p_params = {
+    TableName: process.env.ORDERS_TABLE,
+    IndexName: "proofreadProjects",
+    KeyConditionExpression: "proofreader = :p",
+    ExpressionAttributeValues: {
+      ":p": user,
+    },
+  };
 
-    try {
-      const result = await dynamodb.query(params).promise();
-      return sendResponse(200, { message: result.Items });
-    } catch (err) {
-      console.error(err);
-      return sendResponse(501, { message: err.message });
-    }
-  } else {
-    let orders = [];
-    const t_params = {
-      TableName: process.env.ORDERS_TABLE,
-      IndexName: "translateprojects",
-      KeyConditionExpression: "translator = :t",
-      ExpressionAttributeValues: {
-        ":t": user,
-      },
-    };
+  const t_result = await dynamodb.query(t_params).promise();
+  const p_result = await dynamodb.query(p_params).promise();
 
-    const p_params = {
-        TableName: process.env.ORDERS_TABLE,
-        IndexName: "proofreadProjects",
-        KeyConditionExpression: "proofreader = :p",
-        ExpressionAttributeValues: {
-          ":p": user,
-        },
-      };
+  const ALL = t_result.Items.concat(p_result.Items);
 
-    try{
-      const t_result = await dynamodb.query(t_params).promise();
-      const p_result = await dynamodb.query(p_params).promise();
-      orders = t_result.Items.concat(p_result.Items)
-    }catch(err){
-        console.error(err);
-    }
+ const translated_jobs = ALL.filter(
+    (job) => job.standing === "translating" && job.cancelled !== "true"
+  );
 
-    const completed = orders.filter(order => order?.standing === "completed");
-    const revision = orders.filter(order => order?.standing === "revision");
-    return sendResponse(200, {completed, revision})
-  }
+ const proofread_jobs = ALL.filter(
+    (job) => job.standing === "proofreading" && job.cancelled !== "true"
+  );
+
+
+  const revision_jobs = ALL.filter(
+    (job) => job.standing === "revision" && job.cancelled !== "true"
+  );
+
+  const completed_jobs = ALL.filter(
+    (job) => job.standing === "completed" && job.cancelled !== "true"
+  );
+
+ return sendResponse(200, {translated_jobs, proofread_jobs, revision_jobs, completed_jobs})
 };
 export const handler = getJobs;
