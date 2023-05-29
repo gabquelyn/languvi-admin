@@ -25,22 +25,17 @@ async function edit_order(event, context) {
   const proofreading_due = result.proofreading_due;
   const translation_due = result.translation_due;
   const order_due = result.order_due;
-
-  if (delivery.trim()) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(delivery)) {
-      return sendResponse(502, { message: "Invalid delivery email address" });
-    }
-  }
+  const word_count = result.word_count;
 
   let order_result;
   let UpdateExpression =
-    "SET catTools = :bool, services = :_services, mandate_proofread = :compulsory, allow_automatic = :show";
+    "SET catTools = :bool, services = :_services, mandate_proofread = :compulsory, allow_automatic = :show, word_count = :count";
   let ExpressionAttributeValues = {
     ":bool": catTools,
     ":_services": services,
     ":compulsory": mandate_proofread,
     ":show": automatic_assignment,
+    ":count" : word_count
   };
   let ExpressionAttributeNames = {}
 
@@ -56,7 +51,8 @@ async function edit_order(event, context) {
         Bucket: process.env.CLIENT_BUCKET_NAME,
         Key: `clientdocuments/${fileName}`,
         Body: fileContent,
-        ContentType: fileType,
+        ContentType: fileType,  
+        ContentDisposition: 'attachment',
       };
 
       try {

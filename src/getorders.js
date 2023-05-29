@@ -34,7 +34,13 @@ async function get_orders(event, context) {
           return order;
         }
       });
-      return sendResponse(200, { message: due_orders});
+      return sendResponse(200, { message: due_orders });
+    }
+
+    if (sort === "cancelled") {
+      const result = await dynamodb.scan({TableName}).promise();
+      const filter = result.Items.filter(item => item.cancelled === "true");
+      return sendResponse(200, {message: filter})
     }
 
     if (sort === "unapproved") {
@@ -147,27 +153,6 @@ async function get_orders(event, context) {
       IndexName = "orderStatus";
     }
 
-    // if (sort === "due") {
-    //   KeyConditionExpression = "#status = :p";
-    //   ExpressionAttributeValues = {
-    //     ":p": "due",
-    //   };
-    //   ExpressionAttributeNames = {
-    //     "#status": "standing",
-    //   };
-    //   IndexName = "orderStatus";
-    // }
-
-    if (sort === "cancelled") {
-      KeyConditionExpression = "#status = :p";
-      ExpressionAttributeValues = {
-        ":p": "cancelled",
-      };
-      ExpressionAttributeNames = {
-        "#status": "standing",
-      };
-      IndexName = "orderStatus";
-    }
 
     const params = {
       TableName,
@@ -179,7 +164,10 @@ async function get_orders(event, context) {
 
     try {
       const result = await dynamodb.query(params).promise();
-      return sendResponse(200, { message: result.Items });
+      const filtered = result.Items.filter(
+        (item) => item.cancelled === "false"
+      );
+      return sendResponse(200, { message: filtered });
     } catch (err) {
       console.error(err);
       return sendResponse(501, { message: err.message });

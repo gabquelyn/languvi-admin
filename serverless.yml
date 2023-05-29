@@ -530,6 +530,15 @@ functions:
           authorizer:
             name: adminAuthorizer
 
+  catjobdetails:
+    handler: src/clientActions/getcatjobdetails.handler  
+    events:
+      - httpApi:
+          path: /catjobdetils
+          method: POST 
+          authorizer:
+            name: adminAuthorizer
+
 custom:
   languagePairTableArn: !GetAtt LanguagePairTable.Arn
   topicPricingTableArn: !GetAtt WordPricingTable.Arn

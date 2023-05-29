@@ -4,6 +4,11 @@ const sqs = new AWS.SQS();
 import sendResponse from '../../lib/sendResponse';
 async function sendpayment(event, context){
     const {orderId, owner} = JSON.parse(event.body);
+    const order_details = await dynamodb.get({
+        TableName: process.env.ORDERS_TABLE,
+        Key: {id: orderId},
+    }).promise();
+
     const params  = {
         TableName: process.env.ORDERS_TABLE,
         Key: {id: orderId},
@@ -27,7 +32,7 @@ async function sendpayment(event, context){
         QueueUrl: process.env.MAIL_QUEUE_URL,
         MessageBody: JSON.stringify({
             subject: 'Complete your payment!',
-            body: `You can now pay by following this link https://languivi.netlify.app/pay/${orderId}`,
+            body: `The order cost is $${order_details.Item.cost}. You can now pay by following this link https://languivi.netlify.app/pay/${orderId}`,
             recipient: owner
         })
     }

@@ -26,7 +26,8 @@ const attatchFiles = async (event, contet) => {
       Bucket: process.env.CLIENT_BUCKET_NAME,
       Key: `clientdocuments/${fileName}`,
       Body: fileContent,
-      ContentType: fileType,
+      ContentType: fileType,  
+      ContentDisposition: 'attachment',
     };
 
     try {
